@@ -10,7 +10,7 @@ securityContext:
 {{- if .Values.priorityClassName }}
 priorityClassName: {{ .Values.priorityClassName }}
 {{- end }}
-{{- if ( or .Values.persistence.enabled .Values.dashboards .Values.sidecar.datasources.enabled .Values.extraInitContainers) }}
+{{- if ( or .Values.persistence.enabled .Values.dashboards .Values.extraInitContainers) }}
 initContainers:
 {{- end }}
 {{- if ( and .Values.persistence.enabled .Values.initChownData.enabled ) }}
@@ -57,33 +57,6 @@ initContainers:
         readOnly: {{ .readOnly }}
     {{- end }}
 {{- end }}
-{{- if .Values.sidecar.datasources.enabled }}
-  - name: {{ template "grafana.name" . }}-sc-datasources
-    image: "{{ .Values.sidecar.image }}"
-    imagePullPolicy: {{ .Values.sidecar.imagePullPolicy }}
-    env:
-      - name: METHOD
-        value: LIST
-      - name: LABEL
-        value: "{{ .Values.sidecar.datasources.label }}"
-      - name: FOLDER
-        value: "/etc/grafana/provisioning/datasources"
-      - name: RESOURCE
-        value: "both"
-      {{- if .Values.sidecar.datasources.searchNamespace }}
-      - name: NAMESPACE
-        value: "{{ .Values.sidecar.datasources.searchNamespace }}"
-      {{- end }}
-      {{- if .Values.sidecar.skipTlsVerify }}
-      - name: SKIP_TLS_VERIFY
-        value: "{{ .Values.sidecar.skipTlsVerify }}"
-      {{- end }}
-    resources:
-{{ toYaml .Values.sidecar.resources | indent 6 }}
-    volumeMounts:
-      - name: sc-datasources-volume
-        mountPath: "/etc/grafana/provisioning/datasources"
-{{- end}}
 {{- if .Values.extraInitContainers }}
 {{ toYaml .Values.extraInitContainers | indent 2 }}
 {{- end }}
@@ -120,6 +93,51 @@ containers:
     volumeMounts:
       - name: sc-dashboard-volume
         mountPath: {{ .Values.sidecar.dashboards.folder | quote }}
+{{- end}}
+{{- if .Values.sidecar.datasources.enabled }}
+  - name: {{ template "grafana.name" . }}-sc-datasources
+    image: "{{ .Values.sidecar.image }}"
+    imagePullPolicy: {{ .Values.sidecar.imagePullPolicy }}
+    env:
+      - name: METHOD
+        value: WATCH
+      - name: LABEL
+        value: "{{ .Values.sidecar.datasources.label }}"
+      - name: FOLDER
+        value: "/etc/grafana/provisioning/datasources"
+      - name: RESOURCE
+        value: "both"
+      {{- if .Values.sidecar.datasources.searchNamespace }}
+      - name: NAMESPACE
+        value: "{{ .Values.sidecar.datasources.searchNamespace }}"
+      {{- end }}
+      {{- if .Values.sidecar.skipTlsVerify }}
+      - name: SKIP_TLS_VERIFY
+        value: "{{ .Values.sidecar.skipTlsVerify }}"
+      {{- end }}
+      {{- if not .Values.env.GF_SECURITY_ADMIN_USER }}
+      - name: REQ_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: {{ .Values.admin.existingSecret | default (include "grafana.fullname" .) }}
+            key: {{ .Values.admin.userKey | default "admin-user" }}
+      {{- end }}
+      {{- if and (not .Values.env.GF_SECURITY_ADMIN_PASSWORD) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD__FILE) }}
+      - name: REQ_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: {{ .Values.admin.existingSecret | default (include "grafana.fullname" .) }}
+            key: {{ .Values.admin.passwordKey | default "admin-password" }}
+      {{- end }}
+      - name: REQ_URL
+        value: {{ .Values.sidecar.datasources.realoadUrl }}
+      - name: REQ_METHOD
+        value: POST
+    resources:
+{{ toYaml .Values.sidecar.resources | indent 6 }}
+    volumeMounts:
+      - name: sc-datasources-volume
+        mountPath: "/etc/grafana/provisioning/datasources"
 {{- end}}
   - name: {{ .Chart.Name }}
     image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
